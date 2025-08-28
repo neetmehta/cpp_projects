@@ -1,8 +1,16 @@
 cmake_minimum_required(VERSION 3.15)
-project(opencv_cpp)
+project(MyProject LANGUAGES CXX)
 
-find_package(PCL REQUIRED COMPONENTS io visualization)
+set(CMAKE_CXX_STANDARD 17)
 
-add_executable(opencv_cpp main.cpp)
-target_link_libraries(opencv_cpp PRIVATE ${PCL_LIBRARIES})
-target_include_directories(opencv_cpp PRIVATE ${PCL_INCLUDE_DIRS})
+# Your include and src
+include_directories(include)
+file(GLOB SRC_FILES src/*.cpp main.cpp)
+
+# Find OpenCV (from the build/install folder)
+set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/libs/opencv/build/install")
+find_package(OpenCV REQUIRED)
+
+add_executable(my_project ${SRC_FILES})
+target_include_directories(my_project PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(my_project PRIVATE ${OpenCV_LIBS})
