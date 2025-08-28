@@ -1,8 +1,8 @@
 struct Pixel
 {
 private:
-    unsigned int i;     // Position
-    unsigned int j;     // Position
+    int i;     // Position
+    int j;     // Position
     unsigned int I = 0; // Intensity
     unsigned int score = 0; // Score for corner strength
 
