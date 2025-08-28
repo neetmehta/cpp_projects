@@ -1,46 +1,35 @@
-#include <opencv2/opencv.hpp>
-#include <opencv2/features2d.hpp>
 #include <iostream>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/highgui.hpp>
+#include "keypoints.hpp"
 
-using namespace cv;
-using namespace std;
+int main() {
+    // Load grayscale and color images
+    cv::Mat img_gs = cv::imread("2.jpg", cv::IMREAD_GRAYSCALE);
+    cv::Mat img = cv::imread("2.jpg", cv::IMREAD_COLOR);
 
-int main()
-{
-
-
-    // Load image
-    Mat img = imread("1.jpg", IMREAD_COLOR);
-    if (img.empty()) {
-        cerr << "Error: Could not open image!" << endl;
-        return -1;
+    if (img.empty() || img_gs.empty()) {
+        std::cout << "Could not read the image." << std::endl;
+        return 1;
     }
 
-    // Create FAST detector
-    Ptr<FastFeatureDetector> detector = FastFeatureDetector::create(
-        75,     // threshold
-        true    // nonmaxSuppression
-    );
-
-    // Detect keypoints
-    vector<KeyPoint> keypoints;
-    detector->detect(img, keypoints);
-
-    // Draw keypoints
-    Mat outImg;
-    drawKeypoints(img, keypoints, outImg, Scalar(0, 255, 0), DrawMatchesFlags::DEFAULT);
-
-    for(auto& kp : keypoints) {
-        cout << "Keypoint at (" << kp.pt.x << ", " << kp.pt.y << ") with size " << kp.size << endl;
+    // Detect FAST keypoints
+    auto keypoints = vision::computeFastKeypoints(img_gs, 25.0f);
+    for(const auto& pt : keypoints) {
+        std::cout << "Keypoint at (" << pt.second << ", " << pt.first << ")\n";
     }
 
-    printf("Detected %lu keypoints\n", keypoints.size());
+    printf("Detected %zu keypoints\n", keypoints.size());
+    // Draw detected corners
+    for (const auto& pt : keypoints) {
+        cv::circle(img, cv::Point(pt.second, pt.first), 3, cv::Scalar(0, 255, 0), -1);
+    }
 
-    cv::resize(outImg, outImg, Size(), 0.5, 0.5); // Resize for better visibility
-
+    cv::resize(img, img, cv::Size(), 10, 10);
     // Show result
-    imshow("FAST Keypoints", outImg);
-    waitKey(0);
+    cv::imshow("FAST Corners", img);
+    cv::waitKey(0);
 
     return 0;
 }

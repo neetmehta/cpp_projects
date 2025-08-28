@@ -43,8 +43,8 @@ std::vector<std::pair<int, int>> computeFastKeypoints(cv::Mat& image, float thre
 
             // Check the 16 surrounding pixels
 
-            for(int k=0; k<16; ++k) {
-                Pixel surroundingPixel = surroundingPixels[k] + centerPixel;
+            for(int k=0; k<25; ++k) {
+                Pixel surroundingPixel = surroundingPixels[k%16] + centerPixel;
                 int x = surroundingPixel.getI();
                 int y = surroundingPixel.getJ();
                 surroundingPixel.setIntensity(image.at<uchar>(x, y));
