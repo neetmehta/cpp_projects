@@ -1,26 +1,27 @@
+#pragma once
 struct Pixel
 {
 private:
-    int i;     // Position
-    int j;     // Position
-    unsigned int I = 0; // Intensity
-    unsigned int score = 0; // Score for corner strength
+    int i;           // Position
+    int j;           // Position
+    float I = 0.0f;  // Intensity
+    float score = 0; // Score for corner strength
 
 public:
-    Pixel(int _i, int _j, unsigned int _I, unsigned int _score) : i(_i), j(_j), I(_I), score(_score) {}
+    Pixel(int _i, int _j, float _I, float _score) : i(_i), j(_j), I(_I), score(_score) {}
     Pixel() = default;
 
     // Getters
     int getI() const { return i; }
     int getJ() const { return j; }
-    unsigned int getIntensity() const { return I; }
-    unsigned int getScore() const { return score; }
+    float getIntensity() const { return I; }
+    float getScore() const { return score; }
 
     // Setters
     void setI(int value) { i = value; }
     void setJ(int value) { j = value; }
-    void setIntensity(unsigned int value) { I = value; }
-    void setScore(unsigned int value) { score = value; }
+    void setIntensity(float value) { I = value; }
+    void setScore(float value) { score = value; }
 
     // Comparison operators
     bool operator<(const Pixel &other) const

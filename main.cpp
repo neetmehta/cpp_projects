@@ -4,26 +4,24 @@
 #include <opencv2/highgui.hpp>
 #include "orb.hpp"
 
-int main() {
+int main()
+{
     // Load grayscale and color images
     cv::Mat img_gs = cv::imread("1.jpg", cv::IMREAD_GRAYSCALE);
     cv::Mat img = cv::imread("1.jpg", cv::IMREAD_COLOR);
 
-    if (img.empty() || img_gs.empty()) {
+    if (img.empty() || img_gs.empty())
+    {
         std::cout << "Could not read the image." << std::endl;
         return 1;
     }
 
     // Detect FAST keypoints
-    auto keypoints = ORB::computeFastKeypoints(img_gs, 20.0f);
-    
-    for(const auto& pt : keypoints) {
-        std::cout << "Keypoint at (" << pt.second << ", " << pt.first << ")\n";
-    }
+    auto keypoints = ORB::computeORBKeypoints(img_gs, 20.0f);
 
-    printf("Detected %zu keypoints\n", keypoints.size());
     // Draw detected corners
-    for (const auto& pt : keypoints) {
+    for (const auto &pt : keypoints)
+    {
         cv::circle(img, cv::Point(pt.second, pt.first), 3, cv::Scalar(0, 255, 0), -1);
     }
 

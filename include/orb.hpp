@@ -6,10 +6,10 @@
 
 namespace ORB
 {
-    int getHarrisScore(const cv::Mat &image, Pixel p, int blockSize=3, int ksize=3, double k=0.04);
+    void getHarrisScore(const cv::Mat &image, std::vector<Pixel> &keypoints, int blockSize = 7, int ksize = 3, double k = 0.04);
     extern std::vector<Pixel> FastPixels;
     extern std::vector<Pixel> surroundingPixels;
-    std::vector<std::pair<int, int>> computeFastKeypoints(cv::Mat &image, float threshold);
+    std::vector<std::pair<int, int>> computeORBKeypoints(cv::Mat &image, float fastThreshold = 20, int blockSize = 7, int edgeThreshold = 31, int patchSize = 31, int nfeatures = 500);
     std::vector<bool> nonMaxSuppression(const std::vector<Pixel> &keypoints, int radius);
 
     bool fastTest(cv::Mat &img, unsigned int p);
