@@ -1,7 +1,38 @@
-#include "keypoints.hpp"
+#include "orb.hpp"
 #include <cstdlib>
 
-namespace vision {
+namespace ORB {
+
+int getHarrisScore(const cv::Mat &image, Pixel p, int blockSize, int ksize, double k) {
+    cv::Mat Ix, Iy;
+    cv::Sobel(image, Ix, CV_32F, 1, 0, ksize);
+    cv::Sobel(image, Iy, CV_32F, 0, 1, ksize);
+
+    int x = p.getI();
+    int y = p.getJ();
+
+    int halfBlock = blockSize / 2;
+    float A = 0.0f, B = 0.0f, C = 0.0f;
+
+    for (int i = -halfBlock; i <= halfBlock; ++i) {
+        for (int j = -halfBlock; j <= halfBlock; ++j) {
+            if (x + i < 0 || x + i >= image.rows || y + j < 0 || y + j >= image.cols)
+                continue;
+
+            float ix = Ix.at<float>(x + i, y + j);
+            float iy = Iy.at<float>(x + i, y + j);
+
+            A += ix * ix;
+            B += iy * iy;
+            C += ix * iy;
+        }
+    }
+
+    float detM = A * B - C * C;
+    float traceM = A + B;
+
+    return static_cast<int>(detM - k * traceM * traceM);
+}
 
 std::vector<Pixel> FastPixels = {Pixel(3,0,0,0), Pixel(-3,0,0,0), Pixel(0,3,0,0), Pixel(0,-3,0,0)};
 std::vector<Pixel> surroundingPixels = {
@@ -49,7 +80,7 @@ std::vector<std::pair<int, int>> computeFastKeypoints(cv::Mat& image, float thre
                 int y = surroundingPixel.getJ();
                 surroundingPixel.setIntensity(image.at<uchar>(x, y));
 
-                centerPixel.setScore(centerPixel.getScore() + std::abs(static_cast<int>(surroundingPixel.getIntensity()) - static_cast<int>(centerPixel.getIntensity())));
+                // centerPixel.setScore(centerPixel.getScore() + std::abs(static_cast<int>(surroundingPixel.getIntensity()) - static_cast<int>(centerPixel.getIntensity())));
 
                 if(surroundingPixel.getIntensity() > centerPixel.getIntensity() + threshold) {
                     countBright++;
@@ -63,18 +94,30 @@ std::vector<std::pair<int, int>> computeFastKeypoints(cv::Mat& image, float thre
                 }
 
                 if(countBright >= 9 || countDark >= 9) {
+                    printf("Image size:");
+
+                    centerPixel.setScore(getHarrisScore(image, centerPixel, 3, 3, 0.04));
                     keypixels.emplace_back(centerPixel);
                     break;
                 }
             }
         }
     }
-    auto suppressed = nonMaxSuppression(keypixels, 2);
+
+    // auto suppressed = nonMaxSuppression(keypixels, 2);
+    // std::vector<std::pair<int, int>> keypoints;
+    // for(size_t i = 0; i < keypixels.size(); ++i) {
+    //     if(suppressed[i]==false) {
+    //         keypoints.emplace_back(std::make_pair(keypixels[i].getI(), keypixels[i].getJ()));
+    //     }
+    // }
+
+    std::sort(keypixels.begin(), keypixels.end(), [](const Pixel& a, const Pixel& b) {
+        return a.getScore() > b.getScore();
+    });
     std::vector<std::pair<int, int>> keypoints;
-    for(size_t i = 0; i < keypixels.size(); ++i) {
-        if(suppressed[i]==false) {
-            keypoints.emplace_back(std::make_pair(keypixels[i].getI(), keypixels[i].getJ()));
-        }
+    for(size_t i = 0; i < keypixels.size() && i < 500; ++i) {
+        keypoints.emplace_back(std::make_pair(keypixels[i].getI(), keypixels[i].getJ()));
     }
     return keypoints;
 }

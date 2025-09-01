@@ -2,12 +2,12 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
-#include "keypoints.hpp"
+#include "orb.hpp"
 
 int main() {
     // Load grayscale and color images
-    cv::Mat img_gs = cv::imread("2.jpg", cv::IMREAD_GRAYSCALE);
-    cv::Mat img = cv::imread("2.jpg", cv::IMREAD_COLOR);
+    cv::Mat img_gs = cv::imread("1.jpg", cv::IMREAD_GRAYSCALE);
+    cv::Mat img = cv::imread("1.jpg", cv::IMREAD_COLOR);
 
     if (img.empty() || img_gs.empty()) {
         std::cout << "Could not read the image." << std::endl;
@@ -15,7 +15,8 @@ int main() {
     }
 
     // Detect FAST keypoints
-    auto keypoints = vision::computeFastKeypoints(img_gs, 25.0f);
+    auto keypoints = ORB::computeFastKeypoints(img_gs, 20.0f);
+    
     for(const auto& pt : keypoints) {
         std::cout << "Keypoint at (" << pt.second << ", " << pt.first << ")\n";
     }
@@ -26,7 +27,7 @@ int main() {
         cv::circle(img, cv::Point(pt.second, pt.first), 3, cv::Scalar(0, 255, 0), -1);
     }
 
-    cv::resize(img, img, cv::Size(), 10, 10);
+    cv::resize(img, img, cv::Size(), 0.5, 0.5);
     // Show result
     cv::imshow("FAST Corners", img);
     cv::waitKey(0);

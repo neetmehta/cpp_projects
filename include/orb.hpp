@@ -4,9 +4,9 @@
 #include <opencv2/opencv.hpp>
 #include "pixel.hpp"
 
-namespace vision
+namespace ORB
 {
-
+    int getHarrisScore(const cv::Mat &image, Pixel p, int blockSize=3, int ksize=3, double k=0.04);
     extern std::vector<Pixel> FastPixels;
     extern std::vector<Pixel> surroundingPixels;
     std::vector<std::pair<int, int>> computeFastKeypoints(cv::Mat &image, float threshold);
