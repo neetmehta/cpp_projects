@@ -17,7 +17,7 @@ int main()
     }
 
     // Detect FAST keypoints
-    auto keypoints = ORB::computeORBKeypoints(img_gs, 20.0f);
+    auto keypoints = ORB::computeORBKeypointsPyramid(img_gs, 20.0f, 7, 31, 31, 500, 2, 1.2);
 
     // Draw detected corners
     for (const auto &pt : keypoints)

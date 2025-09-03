@@ -5,10 +5,14 @@ private:
     int i;           // Position
     int j;           // Position
     float I = 0.0f;  // Intensity
-    float score = 0; // Score for corner strength
+    float score = 0.0f; // Score for corner strength
+    float angle = 0.0f; // Angle for orientation 
+    int level = 0; // Pyramid level
 
 public:
+    Pixel(int _i, int _j, float _I, float _score, float _angle) : i(_i), j(_j), I(_I), score(_score), angle(angle) {}
     Pixel(int _i, int _j, float _I, float _score) : i(_i), j(_j), I(_I), score(_score) {}
+    Pixel(int _i, int _j) : i(_i), j(_j) {}
     Pixel() = default;
 
     // Getters
@@ -16,12 +20,16 @@ public:
     int getJ() const { return j; }
     float getIntensity() const { return I; }
     float getScore() const { return score; }
+    float getAngle() const { return angle; }
+    int getLevel() const { return level; }
 
     // Setters
     void setI(int value) { i = value; }
     void setJ(int value) { j = value; }
     void setIntensity(float value) { I = value; }
     void setScore(float value) { score = value; }
+    void setLevel(int l) { level = l; }
+    void setAngle(float a) { angle = a; }
 
     // Comparison operators
     bool operator<(const Pixel &other) const
@@ -50,6 +58,6 @@ public:
     }
     bool operator==(const Pixel &other) const
     {
-        return i == other.i && j == other.j && I == other.I && score == other.score;
+        return i == other.i && j == other.j && I == other.I && score == other.score && angle == other.angle && level == other.level;
     }
 };
