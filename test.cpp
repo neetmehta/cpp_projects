@@ -6,7 +6,7 @@
 
 std::vector<int> getBounds(int patchSize)
 {
-     int halfPatchSize = patchSize / 2;
+    int halfPatchSize = patchSize / 2;
     std::vector<int> umax(halfPatchSize + 2);
 
     int v, v0, vmax = cvFloor(halfPatchSize * sqrt(2.f) / 2 + 1);

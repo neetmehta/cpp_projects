@@ -18,10 +18,8 @@ int main()
     }
 
     // Detect FAST keypoints
-    // auto keypoints = ORB::computeKeypoints(img_gs, 20.0f, 7, 31, 31, 500, 8, 1.2);
-    std::vector<ORB::Keypoint> keypoints;
-    ORB::Keypoint kp = ORB::Keypoint(994,672);
-    keypoints.emplace_back(kp);
+    auto keypoints = ORB::computeKeypoints(img_gs, 20.0f, 7, 31, 31, 500, 8, 1.2);
+
     // Draw detected corners
     for (const auto &pt : keypoints)
     {

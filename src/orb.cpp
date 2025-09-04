@@ -4,12 +4,14 @@
 #include <iostream>
 #include <string>
 
-class Profiler {
+class Profiler
+{
 public:
-    Profiler(const std::string& name) 
+    Profiler(const std::string &name)
         : name(name), start(std::chrono::high_resolution_clock::now()) {}
 
-    ~Profiler() {
+    ~Profiler()
+    {
         auto end = std::chrono::high_resolution_clock::now();
         double ms = std::chrono::duration<double, std::milli>(end - start).count();
         std::cout << "[PROFILE] " << name << " took " << ms << " ms\n";
@@ -69,32 +71,34 @@ namespace ORB
         }
     }
 
-    void getICAngle(const cv::Mat &image, std::vector<Keypoint> &keypoints, std::vector<int> umax, int patchSize)
+    float getICAngle(cv::Mat &image, ORB::Keypoint &kp, int radius, std::vector<int> umax)
     {
-        // Profiler p("getICAngle");
-        int halfPatchSize = patchSize / 2;
-
-        for (Keypoint &kp : keypoints)
+        int m_01 = 0, m_10 = 0;
+        int x0 = kp.getX();
+        int y0 = kp.getY();
+        
+        for (int u = -radius; u <= radius; ++u)
         {
-            float m01 = 0, m10 = 0;
-            int x0 = kp.getX();
-            int y0 = kp.getY();
-
-            for (int v = -halfPatchSize; v < halfPatchSize; v++)
-            {
-                int u = umax[v];
-                for (int x = -halfPatchSize; x > halfPatchSize; x++)
-                {
-                    if (x < std::abs(x))
-                    {
-                        float I = image.at<uchar>(v + x0, x + y0);
-                        m10 += v * I;
-                        m01 += x * I;
-                    }
-                }
-            }
-            kp.setAngle(std::atan2f(m01, m10));
+            m_10 += image.at<uchar>(y0, x0 + u) * u;
         }
+
+        for (int v = 1; v <= radius; v++)
+        {
+            int d = umax.at(v);
+            for (int u = -d; u <= d; u++)
+            {
+                
+                m_10 += image.at<uchar>(y0 + v, x0 + u) * u;
+                m_10 += image.at<uchar>(y0 - v, x0 + u) * u;
+                
+                m_01 += image.at<uchar>(y0 + v, x0 + u) * v;
+                m_01 += image.at<uchar>(y0 - v, x0 + u) * (-v);
+                
+            }
+        }
+        
+
+        return cv::fastAtan2((float)m_01, (float)m_10);
     }
 
     bool fastTest(cv::Mat &img, Keypoint p, float threshold)
@@ -119,7 +123,7 @@ namespace ORB
     }
 
     void buildImagePyramid(const cv::Mat &image, std::vector<cv::Mat> &imagePyramid,
-                        int nlevels, float scaleFactor)
+                           int nlevels, float scaleFactor)
     {
         // Profiler p("buildImagePyramid");
         imagePyramid.clear();
@@ -136,8 +140,7 @@ namespace ORB
         }
     }
 
-
-    void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold, int HarrisblockSize, int nfeatures)
+    void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold, int HarrisblockSize, int nfeatures, int halfPatchSize)
     {
         // Profiler p("computeFastKeypoints");
         std::vector<Keypoint> keypixels, keypixelsAfterNMS;
@@ -145,15 +148,15 @@ namespace ORB
         int rows = image.rows;
         int cols = image.cols;
 
-        for (int y = 3; y < rows - 3; ++y)
+        for (int y = halfPatchSize; y < rows - halfPatchSize; ++y)
         {
-            for (int x = 3; x < cols - 3; ++x)
-            {   
+            for (int x = halfPatchSize; x < cols - halfPatchSize; ++x)
+            {
                 if (!fastTest(image, Keypoint(x, y, image.at<uchar>(y, x), 0), fastThreshold))
                 {
                     continue;
                 }
-                
+
                 Keypoint centerPixel = Keypoint(x, y, image.at<uchar>(y, x), 0);
                 int countBright = 0;
                 int countDark = 0;
@@ -229,8 +232,25 @@ namespace ORB
         // Build image pyramid
         buildImagePyramid(image, imagePyramid, nlevels, scaleFactor);
 
+        int halfPatchSize = patchSize / 2;
+        std::vector<int> umax(halfPatchSize + 2);
+
+        int v, v0, vmax = cvFloor(halfPatchSize * sqrt(2.f) / 2 + 1);
+        int vmin = cvCeil(halfPatchSize * sqrt(2.f) / 2);
+        for (v = 0; v <= vmax; ++v)
+            umax[v] = cvRound(sqrt((double)halfPatchSize * halfPatchSize - v * v));
+
+        // Make sure we are symmetric
+        for (v = halfPatchSize, v0 = 0; v >= vmin; --v)
+        {
+            while (umax[v0] == umax[v0 + 1])
+                ++v0;
+            umax[v] = v0;
+            ++v0;
+        }
+
         // Calculate patch extent
-        
+
         for (int level = 0; level < nlevels; ++level)
         {
             std::vector<Keypoint> keypoints;
@@ -240,6 +260,7 @@ namespace ORB
             for (auto &kp : keypoints)
             {
                 kp.setLevel(level);
+                kp.setAngle(getICAngle(imagePyramid[level], kp, halfPatchSize, umax));
                 allKeypoints.push_back(kp);
             }
         }
@@ -256,7 +277,7 @@ namespace ORB
         return allKeypoints;
     }
 
-    std::vector<Keypoint> nonMaxSuppression(const std::vector<Keypoint>& keypoints, int radius, int rows, int cols)
+    std::vector<Keypoint> nonMaxSuppression(const std::vector<Keypoint> &keypoints, int radius, int rows, int cols)
     {
         // Profiler p("nonMaxSuppression");
         int cellSize = radius;
@@ -266,7 +287,8 @@ namespace ORB
         std::vector<std::vector<Keypoint>> grid(gridRows * gridCols);
 
         // Assign keypoints to grid cells
-        for (const auto& kp : keypoints) {
+        for (const auto &kp : keypoints)
+        {
             int gx = kp.getX() / cellSize;
             int gy = kp.getY() / cellSize;
             grid[gy * gridCols + gx].push_back(kp);
@@ -274,13 +296,16 @@ namespace ORB
 
         // Pick strongest in each cell
         std::vector<Keypoint> result;
-        
-        for (auto& cell : grid) {
-            if (cell.empty()) continue;
+
+        for (auto &cell : grid)
+        {
+            if (cell.empty())
+                continue;
             auto best = std::max_element(cell.begin(), cell.end(),
-                                        [](const Keypoint& a, const Keypoint& b) {
-                                            return a.getScore() < b.getScore();
-                                        });
+                                         [](const Keypoint &a, const Keypoint &b)
+                                         {
+                                             return a.getScore() < b.getScore();
+                                         });
             result.push_back(*best);
         }
 
