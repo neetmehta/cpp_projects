@@ -9,7 +9,7 @@ int main()
     // Load grayscale and color images
     cv::Mat img_gs = cv::imread("1.jpg", cv::IMREAD_GRAYSCALE);
     cv::Mat img = cv::imread("1.jpg", cv::IMREAD_COLOR);
-
+    printf("Image size: %dx%d\n", img.cols, img.rows);
     if (img.empty() || img_gs.empty())
     {
         std::cout << "Could not read the image." << std::endl;
@@ -22,9 +22,10 @@ int main()
     // Draw detected corners
     for (const auto &pt : keypoints)
     {
-        cv::circle(img, cv::Point(pt.first, pt.second), 3, cv::Scalar(0, 255, 0), -1);
+        cv::circle(img, cv::Point(pt.getX() * std::pow(1.2, pt.getLevel()), pt.getY() * std::pow(1.2, pt.getLevel())), 3, cv::Scalar(0, 255, 0), -1);
     }
 
+    
     cv::resize(img, img, cv::Size(), 0.5, 0.5);
     // Show result
     cv::imshow("FAST Corners", img);

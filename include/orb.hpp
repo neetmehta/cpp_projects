@@ -12,10 +12,10 @@ namespace ORB
     extern std::vector<Keypoint> surroundingPixels;
     void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold = 20, int HarrisblockSize = 7, int nfeatures = 500);
 
-    std::vector<std::pair<int, int>> computeKeypoints(cv::Mat &image, float fastThreshold = 20, int blockSize = 7, int edgeThreshold = 31, int patchSize = 31, int nfeatures = 500, int nlevels = 8, float scaleFactor = 1.2);
+    std::vector<Keypoint> computeKeypoints(cv::Mat &image, float fastThreshold = 20, int blockSize = 7, int edgeThreshold = 31, int patchSize = 31, int nfeatures = 500, int nlevels = 8, float scaleFactor = 1.2);
 
     void buildImagePyramid(const cv::Mat &image, std::vector<cv::Mat> &imagePyramid, int nlevels = 8, float scaleFactor = 1.2);
-    std::vector<bool> nonMaxSuppression(const std::vector<Keypoint> &keypoints, int radius);
+    std::vector<Keypoint> nonMaxSuppression(const std::vector<Keypoint> &keypoints, int radius, int rows, int cols);
 
     bool fastTest(cv::Mat &img, unsigned int p);
 

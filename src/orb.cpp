@@ -1,5 +1,24 @@
 #include "orb.hpp"
 #include <cstdlib>
+#include <chrono>
+#include <iostream>
+#include <string>
+
+class Profiler {
+public:
+    Profiler(const std::string& name) 
+        : name(name), start(std::chrono::high_resolution_clock::now()) {}
+
+    ~Profiler() {
+        auto end = std::chrono::high_resolution_clock::now();
+        double ms = std::chrono::duration<double, std::milli>(end - start).count();
+        std::cout << "[PROFILE] " << name << " took " << ms << " ms\n";
+    }
+
+private:
+    std::string name;
+    std::chrono::time_point<std::chrono::high_resolution_clock> start;
+};
 
 namespace ORB
 {
@@ -11,6 +30,7 @@ namespace ORB
 
     void getHarrisScore(const cv::Mat &image, std::vector<Keypoint> &keypoints, int blockSize, int ksize, double k)
     {
+        Profiler p("getHarrisScore");
         cv::Mat Ix, Iy;
         cv::Sobel(image, Ix, CV_32F, 0, 1, ksize);
         cv::Sobel(image, Iy, CV_32F, 1, 0, ksize);
@@ -20,8 +40,8 @@ namespace ORB
 
         for (auto &kp : keypoints)
         {
-            int x = kp.getX();
-            int y = kp.getY();
+            int x0 = kp.getX();
+            int y0 = kp.getY();
             int halfBlock = blockSize / 2;
 
             float a = 0, b = 0, c = 0;
@@ -30,11 +50,11 @@ namespace ORB
             {
                 for (int j = -halfBlock; j <= halfBlock; ++j)
                 {
-                    int xi = x + i;
-                    int yj = y + j;
+                    int xi = x0 + i;
+                    int yj = y0 + j;
 
-                    float ix = Ix.at<float>(xi, yj);
-                    float iy = Iy.at<float>(xi, yj);
+                    float ix = Ix.at<float>(yj, xi);
+                    float iy = Iy.at<float>(yj, xi);
 
                     a += ix * ix;
                     b += iy * iy;
@@ -51,6 +71,7 @@ namespace ORB
 
     void getICAngle(const cv::Mat &image, std::vector<Keypoint> &keypoints, std::vector<int> umax, int patchSize)
     {
+        // Profiler p("getICAngle");
         int halfPatchSize = patchSize / 2;
 
         for (Keypoint &kp : keypoints)
@@ -100,6 +121,7 @@ namespace ORB
     void buildImagePyramid(const cv::Mat &image, std::vector<cv::Mat> &imagePyramid,
                         int nlevels, float scaleFactor)
     {
+        // Profiler p("buildImagePyramid");
         imagePyramid.clear();
         imagePyramid.resize(nlevels);
         imagePyramid[0] = image.clone();
@@ -117,6 +139,7 @@ namespace ORB
 
     void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold, int HarrisblockSize, int nfeatures)
     {
+        // Profiler p("computeFastKeypoints");
         std::vector<Keypoint> keypixels, keypixelsAfterNMS;
 
         int rows = image.rows;
@@ -169,19 +192,12 @@ namespace ORB
             }
         }
 
-        auto suppressed = nonMaxSuppression(keypixels, 7);
-        for (size_t i = 0; i < keypixels.size(); ++i)
-        {
-            if (!suppressed[i])
-            {
-                keypoints.emplace_back(keypixels[i]);
-            }
-        }
+        keypixelsAfterNMS = nonMaxSuppression(keypixels, 7, image.rows, image.cols);
 
         getHarrisScore(image, keypixelsAfterNMS, HarrisblockSize, 3, 0.04);
         // Sort keypoints by Harris score in descending order
 
-        std::sort(keypixels.begin(), keypixels.end(), [](const Keypoint &a, const Keypoint &b)
+        std::sort(keypixelsAfterNMS.begin(), keypixelsAfterNMS.end(), [](const Keypoint &a, const Keypoint &b)
                   { return a.getScore() > b.getScore(); });
 
         for (size_t i = 0; i < keypixelsAfterNMS.size() && i < nfeatures; ++i)
@@ -190,9 +206,9 @@ namespace ORB
         }
     }
 
-    std::vector<std::pair<int, int>> computeKeypoints(cv::Mat &image, float fastThreshold, int blockSize, int edgeThreshold, int patchSize, int nfeatures, int nlevels, float scaleFactor)
+    std::vector<Keypoint> computeKeypoints(cv::Mat &image, float fastThreshold, int blockSize, int edgeThreshold, int patchSize, int nfeatures, int nlevels, float scaleFactor)
     {
-
+        // Profiler p("computeKeypoints");
         // Initialize variables
         std::vector<int> nfeaturesPerLevel(nlevels);
         std::vector<cv::Mat> imagePyramid(nlevels);
@@ -237,50 +253,38 @@ namespace ORB
             allKeypoints.resize(nfeatures);
         }
 
-        // Convert to vector of pairs for output
-        std::vector<std::pair<int, int>> keypointPairs;
-        for (const auto &kp : allKeypoints)
-        {
-            keypointPairs.emplace_back(kp.getX(), kp.getY());
-        }
-
-        return keypointPairs;
+        return allKeypoints;
     }
 
-    std::vector<bool> nonMaxSuppression(const std::vector<Keypoint> &keypixels, int radius = 3)
+    std::vector<Keypoint> nonMaxSuppression(const std::vector<Keypoint>& keypoints, int radius, int rows, int cols)
     {
+        // Profiler p("nonMaxSuppression");
+        int cellSize = radius;
+        int gridRows = (rows + cellSize - 1) / cellSize;
+        int gridCols = (cols + cellSize - 1) / cellSize;
 
-        std::vector<bool> suppressed(keypixels.size(), false);
+        std::vector<std::vector<Keypoint>> grid(gridRows * gridCols);
 
-        for (size_t i = 0; i < keypixels.size(); ++i)
-        {
-            if (suppressed[i])
-                continue;
-
-            const auto &kp1 = keypixels[i];
-            for (size_t j = i + 1; j < keypixels.size(); ++j)
-            {
-                if (suppressed[j])
-                    continue;
-
-                const auto &kp2 = keypixels[j];
-                int distSq = (kp1.getX() - kp2.getX()) * (kp1.getX() - kp2.getX()) +
-                             (kp1.getY() - kp2.getY()) * (kp1.getY() - kp2.getY());
-                if (distSq <= radius * radius)
-                {
-                    if (kp1.getScore() >= kp2.getScore())
-                    {
-                        suppressed[j] = true;
-                    }
-                    else
-                    {
-                        suppressed[i] = true;
-                        break;
-                    }
-                }
-            }
+        // Assign keypoints to grid cells
+        for (const auto& kp : keypoints) {
+            int gx = kp.getX() / cellSize;
+            int gy = kp.getY() / cellSize;
+            grid[gy * gridCols + gx].push_back(kp);
         }
-        return suppressed;
+
+        // Pick strongest in each cell
+        std::vector<Keypoint> result;
+        
+        for (auto& cell : grid) {
+            if (cell.empty()) continue;
+            auto best = std::max_element(cell.begin(), cell.end(),
+                                        [](const Keypoint& a, const Keypoint& b) {
+                                            return a.getScore() < b.getScore();
+                                        });
+            result.push_back(*best);
+        }
+
+        return result;
     }
 
 } // namespace vision
