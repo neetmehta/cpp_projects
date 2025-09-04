@@ -4,19 +4,24 @@
 namespace ORB
 {
 
-    void getHarrisScore(const cv::Mat &image, std::vector<Pixel> &keypoints, int blockSize, int ksize, double k)
+    std::vector<Keypoint> FastPixels = {Keypoint(3, 0), Keypoint(-3, 0), Keypoint(0, 3), Keypoint(0, -3)};
+    std::vector<Keypoint> surroundingPixels = {
+        Keypoint(3, 0), Keypoint(3, 1), Keypoint(2, 2), Keypoint(1, 3), Keypoint(0, 3), Keypoint(-1, 3), Keypoint(-2, 2), Keypoint(-3, 1),
+        Keypoint(-3, 0), Keypoint(-3, -1), Keypoint(-2, -2), Keypoint(-1, -3), Keypoint(0, -3), Keypoint(1, -3), Keypoint(2, -2), Keypoint(3, -1)};
+
+    void getHarrisScore(const cv::Mat &image, std::vector<Keypoint> &keypoints, int blockSize, int ksize, double k)
     {
         cv::Mat Ix, Iy;
-        cv::Sobel(image, Ix, CV_32F, 1, 0, ksize);
-        cv::Sobel(image, Iy, CV_32F, 0, 1, ksize);
+        cv::Sobel(image, Ix, CV_32F, 0, 1, ksize);
+        cv::Sobel(image, Iy, CV_32F, 1, 0, ksize);
         float scale = (1 << (ksize - 1)) * 255.0 * blockSize;
         scale = 1.0f / scale;
         scale = scale * scale * scale * scale;
 
         for (auto &kp : keypoints)
         {
-            int x = kp.getI();
-            int y = kp.getJ();
+            int x = kp.getX();
+            int y = kp.getY();
             int halfBlock = blockSize / 2;
 
             float a = 0, b = 0, c = 0;
@@ -39,25 +44,47 @@ namespace ORB
             float det = a * b - c * c;
             float trace = a + b;
             float R = (det - k * trace * trace) * scale;
-            // printf("Pixel at (%d, %d) - Harris score: %f\n", x, y, R);
+
             kp.setScore(R);
         }
     }
 
-    std::vector<Pixel> FastPixels = {Pixel(3, 0), Pixel(-3, 0), Pixel(0, 3), Pixel(0, -3)};
-    std::vector<Pixel> surroundingPixels = {
-        Pixel(3, 0), Pixel(3, 1), Pixel(2, 2), Pixel(1, 3), Pixel(0, 3), Pixel(-1, 3), Pixel(-2, 2), Pixel(-3, 1),
-        Pixel(-3, 0), Pixel(-3, -1), Pixel(-2, -2), Pixel(-1, -3), Pixel(0, -3), Pixel(1, -3), Pixel(2, -2), Pixel(3, -1)};
+    void getICAngle(const cv::Mat &image, std::vector<Keypoint> &keypoints, std::vector<int> umax, int patchSize)
+    {
+        int halfPatchSize = patchSize / 2;
 
-    bool fastTest(cv::Mat &img, Pixel p, float threshold)
+        for (Keypoint &kp : keypoints)
+        {
+            float m01 = 0, m10 = 0;
+            int x0 = kp.getX();
+            int y0 = kp.getY();
+
+            for (int v = -halfPatchSize; v < halfPatchSize; v++)
+            {
+                int u = umax[v];
+                for (int x = -halfPatchSize; x > halfPatchSize; x++)
+                {
+                    if (x < std::abs(x))
+                    {
+                        float I = image.at<uchar>(v + x0, x + y0);
+                        m10 += v * I;
+                        m01 += x * I;
+                    }
+                }
+            }
+            kp.setAngle(std::atan2f(m01, m10));
+        }
+    }
+
+    bool fastTest(cv::Mat &img, Keypoint p, float threshold)
     {
         int brighter = 0, darker = 0;
         uchar centerIntensity = static_cast<uchar>(p.getIntensity());
 
-        for (const Pixel &offset : FastPixels)
+        for (const Keypoint &offset : FastPixels)
         {
-            Pixel fp = offset + p;
-            uchar val = img.at<uchar>(fp.getI(), fp.getJ());
+            Keypoint fp = offset + p;
+            uchar val = img.at<uchar>(fp.getY(), fp.getX());
             if (val > centerIntensity + threshold)
             {
                 brighter++;
@@ -70,47 +97,41 @@ namespace ORB
         return (brighter > 1) || (darker > 1);
     }
 
-    std::vector<std::pair<int, int>> computeORBKeypoints(cv::Mat &image, float fastThreshold, int blockSize, int edgeThreshold, int patchSize, int nfeatures, int nlevels, float scaleFactor)
+    void buildImagePyramid(const cv::Mat &image, std::vector<cv::Mat> &imagePyramid,
+                        int nlevels, float scaleFactor)
     {
-        std::vector<cv::Mat> imagePyramid(nlevels);
-        std::vector<int> nfeaturesPerLevel(nlevels);
-        std::vector<Pixel> keypixels, keypixelsAfterNMS;
+        imagePyramid.clear();
+        imagePyramid.resize(nlevels);
         imagePyramid[0] = image.clone();
+
         for (int level = 1; level < nlevels; ++level)
         {
             float scale = std::pow(scaleFactor, level);
-            cv::resize(image, imagePyramid[level],
-                       cv::Size(std::round(image.cols / scale),
-                                std::round(image.rows / scale)),
-                       0, 0, cv::INTER_LINEAR);
+            cv::Size sz(std::round((float)image.cols / scale),
+                        std::round((float)image.rows / scale));
+
+            cv::resize(image, imagePyramid[level], sz, 0, 0, cv::INTER_LINEAR);
         }
-        
-        float factor = (float)(1.0 / scaleFactor);
-        float ndesiredFeaturesPerScale = nfeatures*(1 - factor)/(1 - (float)pow((double)factor, (double)nlevels));
-        int sumFeatures = 0;
-        for( int level = 0; level < nlevels-1; level++ )
-        {
-            nfeaturesPerLevel[level] = cvRound(ndesiredFeaturesPerScale);
-            sumFeatures += nfeaturesPerLevel[level];
-            ndesiredFeaturesPerScale *= factor;
-        }
+    }
+
+
+    void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold, int HarrisblockSize, int nfeatures)
+    {
+        std::vector<Keypoint> keypixels, keypixelsAfterNMS;
 
         int rows = image.rows;
         int cols = image.cols;
 
-        int halfBlock = blockSize / 2;
-        int borderOffset = halfBlock + 1;
-
-        for (int i = 3; i < rows - 3; ++i)
+        for (int y = 3; y < rows - 3; ++y)
         {
-            for (int j = 3; j < cols - 3; ++j)
-            {
-                if (!fastTest(image, Pixel(i, j, image.at<uchar>(i, j), 0), fastThreshold))
+            for (int x = 3; x < cols - 3; ++x)
+            {   
+                if (!fastTest(image, Keypoint(x, y, image.at<uchar>(y, x), 0), fastThreshold))
                 {
                     continue;
                 }
-
-                Pixel centerPixel = Pixel(i, j, image.at<uchar>(i, j), 0);
+                
+                Keypoint centerPixel = Keypoint(x, y, image.at<uchar>(y, x), 0);
                 int countBright = 0;
                 int countDark = 0;
 
@@ -118,10 +139,10 @@ namespace ORB
 
                 for (int k = 0; k < 25; ++k)
                 {
-                    Pixel surroundingPixel = surroundingPixels[k % 16] + centerPixel;
-                    int x = surroundingPixel.getI();
-                    int y = surroundingPixel.getJ();
-                    surroundingPixel.setIntensity(image.at<uchar>(x, y));
+                    Keypoint surroundingPixel = surroundingPixels[k % 16] + centerPixel;
+                    int xs = surroundingPixel.getX();
+                    int ys = surroundingPixel.getY();
+                    surroundingPixel.setIntensity(image.at<uchar>(ys, xs));
 
                     if (surroundingPixel.getIntensity() > centerPixel.getIntensity() + fastThreshold)
                     {
@@ -153,85 +174,80 @@ namespace ORB
         {
             if (!suppressed[i])
             {
-                keypixelsAfterNMS.emplace_back(keypixels[i]);
+                keypoints.emplace_back(keypixels[i]);
             }
         }
 
-        getHarrisScore(image, keypixelsAfterNMS, blockSize, 3, 0.04);
+        getHarrisScore(image, keypixelsAfterNMS, HarrisblockSize, 3, 0.04);
         // Sort keypoints by Harris score in descending order
 
-        std::sort(keypixels.begin(), keypixels.end(), [](const Pixel &a, const Pixel &b)
+        std::sort(keypixels.begin(), keypixels.end(), [](const Keypoint &a, const Keypoint &b)
                   { return a.getScore() > b.getScore(); });
-        std::vector<std::pair<int, int>> keypoints;
+
         for (size_t i = 0; i < keypixelsAfterNMS.size() && i < nfeatures; ++i)
         {
-            keypoints.emplace_back(std::make_pair(keypixelsAfterNMS[i].getI(), keypixelsAfterNMS[i].getJ()));
-            printf("Keypoint at (%d, %d) with score: %f\n", keypixelsAfterNMS[i].getI(), keypixelsAfterNMS[i].getJ(), keypixelsAfterNMS[i].getScore());
+            keypoints.emplace_back(keypixelsAfterNMS[i]);
         }
-        return keypoints;
     }
 
-    std::vector<std::pair<int, int>> computeORBKeypointsPyramid(cv::Mat &image,
-                                                                float fastThreshold,
-                                                                int blockSize,
-                                                                int edgeThreshold,
-                                                                int patchSize,
-                                                                int nfeatures,
-                                                                int nlevels,
-                                                                float scaleFactor)
+    std::vector<std::pair<int, int>> computeKeypoints(cv::Mat &image, float fastThreshold, int blockSize, int edgeThreshold, int patchSize, int nfeatures, int nlevels, float scaleFactor)
     {
-        std::vector<Pixel> allKeypixels;
 
+        // Initialize variables
+        std::vector<int> nfeaturesPerLevel(nlevels);
+        std::vector<cv::Mat> imagePyramid(nlevels);
+        std::vector<Keypoint> allKeypoints;
+
+        // Calculate the number of features per level
+        float factor = (float)(1.0 / scaleFactor);
+        float ndesiredFeaturesPerScale = nfeatures * (1 - factor) / (1 - (float)pow((double)factor, (double)nlevels));
+
+        int sumFeatures = 0;
+        for (int level = 0; level < nlevels - 1; level++)
+        {
+            nfeaturesPerLevel[level] = cvRound(ndesiredFeaturesPerScale);
+            sumFeatures += nfeaturesPerLevel[level];
+            ndesiredFeaturesPerScale *= factor;
+        }
+        nfeaturesPerLevel[nlevels - 1] = std::max(nfeatures - sumFeatures, 0);
+        // Build image pyramid
+        buildImagePyramid(image, imagePyramid, nlevels, scaleFactor);
+
+        // Calculate patch extent
+        
         for (int level = 0; level < nlevels; ++level)
         {
+            std::vector<Keypoint> keypoints;
+            computeFastKeypoints(imagePyramid[level], keypoints, fastThreshold, blockSize, nfeaturesPerLevel[level]);
+            // Adjust keypoint coordinates to the original image scale
             float scale = std::pow(scaleFactor, level);
-            cv::Mat scaledImg;
-            cv::resize(image, scaledImg,
-                       cv::Size(std::round(image.cols / scale),
-                                std::round(image.rows / scale)),
-                       0, 0, cv::INTER_LINEAR);
-
-            // Detect keypoints at this pyramid level
-            auto keypointsAtLevel = computeORBKeypoints(scaledImg,
-                                                        fastThreshold,
-                                                        blockSize,
-                                                        edgeThreshold,
-                                                        patchSize,
-                                                        nfeatures);
-
-            // Convert back to Pixel with proper coordinates rescaled
-            for (auto &kp : keypointsAtLevel)
+            for (auto &kp : keypoints)
             {
-                int origY = std::round(kp.first * scale);
-                int origX = std::round(kp.second * scale);
-                allKeypixels.emplace_back(Pixel(origY, origX,
-                                                image.at<uchar>(origY, origX), 0));
+                kp.setLevel(level);
+                allKeypoints.push_back(kp);
             }
         }
 
-        // Compute Harris scores on the **original image** for all rescaled pixels
-        getHarrisScore(image, allKeypixels, blockSize, 3, 0.04);
+        // Sort all keypoints by score and retain the best nfeatures
+        std::sort(allKeypoints.begin(), allKeypoints.end(), [](const Keypoint &a, const Keypoint &b)
+                  { return a.getScore() > b.getScore(); });
 
-        // Sort globally
-        std::sort(allKeypixels.begin(), allKeypixels.end(),
-                  [](const Pixel &a, const Pixel &b)
-                  {
-                      return a.getScore() > b.getScore();
-                  });
-
-        // Keep top N
-        std::vector<std::pair<int, int>> finalKeypoints;
-        for (size_t i = 0; i < allKeypixels.size() && i < (size_t)nfeatures; ++i)
+        if (allKeypoints.size() > static_cast<size_t>(nfeatures))
         {
-            finalKeypoints.emplace_back(
-                std::make_pair(allKeypixels[i].getI(),
-                               allKeypixels[i].getJ()));
+            allKeypoints.resize(nfeatures);
         }
 
-        return finalKeypoints;
+        // Convert to vector of pairs for output
+        std::vector<std::pair<int, int>> keypointPairs;
+        for (const auto &kp : allKeypoints)
+        {
+            keypointPairs.emplace_back(kp.getX(), kp.getY());
+        }
+
+        return keypointPairs;
     }
 
-    std::vector<bool> nonMaxSuppression(const std::vector<Pixel> &keypixels, int radius = 3)
+    std::vector<bool> nonMaxSuppression(const std::vector<Keypoint> &keypixels, int radius = 3)
     {
 
         std::vector<bool> suppressed(keypixels.size(), false);
@@ -248,8 +264,8 @@ namespace ORB
                     continue;
 
                 const auto &kp2 = keypixels[j];
-                int distSq = (kp1.getI() - kp2.getI()) * (kp1.getI() - kp2.getI()) +
-                             (kp1.getJ() - kp2.getJ()) * (kp1.getJ() - kp2.getJ());
+                int distSq = (kp1.getX() - kp2.getX()) * (kp1.getX() - kp2.getX()) +
+                             (kp1.getY() - kp2.getY()) * (kp1.getY() - kp2.getY());
                 if (distSq <= radius * radius)
                 {
                     if (kp1.getScore() >= kp2.getScore())
