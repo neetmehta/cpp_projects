@@ -1,4 +1,5 @@
 #include "orb.hpp"
+#include "Descriptor.hpp"
 #include <cstdlib>
 #include <chrono>
 #include <iostream>
@@ -32,7 +33,7 @@ namespace ORB
 
     void getHarrisScore(const cv::Mat &image, std::vector<Keypoint> &keypoints, int blockSize, int ksize, double k)
     {
-        Profiler p("getHarrisScore");
+        // Profiler p("getHarrisScore");
         cv::Mat Ix, Iy;
         cv::Sobel(image, Ix, CV_32F, 0, 1, ksize);
         cv::Sobel(image, Iy, CV_32F, 1, 0, ksize);
@@ -76,7 +77,7 @@ namespace ORB
         int m_01 = 0, m_10 = 0;
         int x0 = kp.getX();
         int y0 = kp.getY();
-        
+
         for (int u = -radius; u <= radius; ++u)
         {
             m_10 += image.at<uchar>(y0, x0 + u) * u;
@@ -87,16 +88,14 @@ namespace ORB
             int d = umax.at(v);
             for (int u = -d; u <= d; u++)
             {
-                
+
                 m_10 += image.at<uchar>(y0 + v, x0 + u) * u;
                 m_10 += image.at<uchar>(y0 - v, x0 + u) * u;
-                
+
                 m_01 += image.at<uchar>(y0 + v, x0 + u) * v;
                 m_01 += image.at<uchar>(y0 - v, x0 + u) * (-v);
-                
             }
         }
-        
 
         return cv::fastAtan2((float)m_01, (float)m_10);
     }
@@ -140,7 +139,7 @@ namespace ORB
         }
     }
 
-    void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold, int HarrisblockSize, int nfeatures, int halfPatchSize)
+    void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold, int HarrisblockSize, int nfeatures, int halfPatchSize, std::vector<int> umax, int level)
     {
         // Profiler p("computeFastKeypoints");
         std::vector<Keypoint> keypixels, keypixelsAfterNMS;
@@ -188,6 +187,8 @@ namespace ORB
 
                     if (countBright >= 9 || countDark >= 9)
                     {
+                        centerPixel.setLevel(level);
+                        centerPixel.setAngle(getICAngle(image, centerPixel, halfPatchSize, umax));
                         keypixels.emplace_back(centerPixel);
                         break;
                     }
@@ -254,13 +255,14 @@ namespace ORB
         for (int level = 0; level < nlevels; ++level)
         {
             std::vector<Keypoint> keypoints;
-            computeFastKeypoints(imagePyramid[level], keypoints, fastThreshold, blockSize, nfeaturesPerLevel[level]);
-            // Adjust keypoint coordinates to the original image scale
-            float scale = std::pow(scaleFactor, level);
+            computeFastKeypoints(imagePyramid[level], keypoints, fastThreshold, blockSize, nfeaturesPerLevel[level], halfPatchSize, umax, level);
+            computeBriefDescriptor(imagePyramid[level], keypoints, 256, patchSize);
             for (auto &kp : keypoints)
             {
-                kp.setLevel(level);
-                kp.setAngle(getICAngle(imagePyramid[level], kp, halfPatchSize, umax));
+                // Scale keypoint coordinates to original image size
+                float scale = std::pow(scaleFactor, level);
+                kp.setX(cvRound(kp.getX() * scale));
+                kp.setY(cvRound(kp.getY() * scale));
                 allKeypoints.push_back(kp);
             }
         }
@@ -276,6 +278,68 @@ namespace ORB
 
         return allKeypoints;
     }
+
+    // extern const int bit_pattern_31_[256][4];
+
+    void computeBriefDescriptor(cv::Mat &image,
+                                std::vector<Keypoint> &keypoints,
+                                int nfeatures,     // usually 256
+                                int patchSize)     // ORB default = 31
+    {
+        CV_Assert(patchSize == 31);  // current bit_pattern is for 31
+        CV_Assert(nfeatures % 8 == 0);
+
+        // Pre-blur the image (OpenCV does this at pyramid construction, not per kp)
+        cv::Mat blurred;
+        cv::GaussianBlur(image, blurred, cv::Size(7, 7), 2, 2, cv::BORDER_REFLECT_101);
+
+        const int bytes = nfeatures / 8;
+
+        for (auto &kp : keypoints)
+        {
+            // Allocate descriptor vector (zero initialized)
+            std::vector<uchar> descriptor(bytes, 0);
+
+            // Rotation (degrees → radians)
+            float angle = kp.getAngle() * (float)(CV_PI / 180.f);
+            float a = std::cos(angle);
+            float b = std::sin(angle);
+
+            int x0 = kp.getX();
+            int y0 = kp.getY();
+
+            for (int i = 0; i < nfeatures; i++)
+            {
+                int idx1 = bit_pattern_31_[i][0];
+                int idy1 = bit_pattern_31_[i][1];
+                int idx2 = bit_pattern_31_[i][2];
+                int idy2 = bit_pattern_31_[i][3];
+
+                // Rotate pattern points
+                int r1 = cvRound(a * idx1 - b * idy1) + y0;
+                int c1 = cvRound(b * idx1 + a * idy1) + x0;
+                int r2 = cvRound(a * idx2 - b * idy2) + y0;
+                int c2 = cvRound(b * idx2 + a * idy2) + x0;
+
+                // Skip out-of-bounds
+                if (r1 < 0 || r1 >= blurred.rows || c1 < 0 || c1 >= blurred.cols ||
+                    r2 < 0 || r2 >= blurred.rows || c2 < 0 || c2 >= blurred.cols)
+                {
+                    continue;
+                }
+
+                uchar val1 = blurred.at<uchar>(r1, c1);
+                uchar val2 = blurred.at<uchar>(r2, c2);
+
+                // Pack bit (MSB-first like OpenCV)
+                if (val1 < val2)
+                    descriptor[i / 8] |= (1 << (7 - (i % 8)));
+            }
+            kp.setDescriptor(descriptor);
+        }
+    }
+
+
 
     std::vector<Keypoint> nonMaxSuppression(const std::vector<Keypoint> &keypoints, int radius, int rows, int cols)
     {

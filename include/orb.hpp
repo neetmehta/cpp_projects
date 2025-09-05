@@ -2,14 +2,15 @@
 #include <vector>
 #include <utility>
 #include <opencv2/opencv.hpp>
-#include "pixel.hpp"
+#include "Keypoint.hpp"
 
 namespace ORB
 {
     void getHarrisScore(const cv::Mat &image, std::vector<Keypoint> &keypoints, int blockSize = 7, int ksize = 3, double k = 0.04);
     extern std::vector<Keypoint> FastPixels;
     extern std::vector<Keypoint> surroundingPixels;
-    void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold = 20, int HarrisblockSize = 7, int nfeatures = 500, int patchSize = 31);
+    void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold = 20, int HarrisblockSize = 7, int nfeatures = 500, int patchSize = 31, std::vector<int> umax = {}, int level = 0);
+    void computeBriefDescriptor(cv::Mat &image, std::vector<Keypoint> &keypoints, int nfeatures = 256, int patchSize = 31);
 
     std::vector<Keypoint> computeKeypoints(cv::Mat &image, float fastThreshold = 20, int blockSize = 7, int edgeThreshold = 31, int patchSize = 31, int nfeatures = 500, int nlevels = 8, float scaleFactor = 1.2);
 

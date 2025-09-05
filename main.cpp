@@ -8,8 +8,8 @@
 int main()
 {
     // Load grayscale and color images
-    cv::Mat img_gs = cv::imread("1.jpg", cv::IMREAD_GRAYSCALE);
-    cv::Mat img = cv::imread("1.jpg", cv::IMREAD_COLOR);
+    cv::Mat img_gs = cv::imread("1.png", cv::IMREAD_GRAYSCALE);
+    cv::Mat img = cv::imread("1.png", cv::IMREAD_COLOR);
     printf("Image size: %dx%d\n", img.cols, img.rows);
     if (img.empty() || img_gs.empty())
     {
@@ -24,11 +24,12 @@ int main()
     for (const auto &pt : keypoints)
     {
         printf("Keypoint at (%d, %d) with harris score %.7f\n", pt.getX(), pt.getY(), pt.getScore());
-        cv::circle(img, cv::Point(pt.getX() * std::pow(1.2, pt.getLevel()), pt.getY() * std::pow(1.2, pt.getLevel())), 3, cv::Scalar(0, 255, 0), -1);
+        float scale = std::pow(1.2, pt.getLevel());
+        cv::circle(img, cv::Point(pt.getX(), pt.getY()), 15 * scale, cv::Scalar(0, 255, 0), 1);
     }
 
-    
-    cv::resize(img, img, cv::Size(), 0.5, 0.5);
+    int scale = 1;
+    cv::resize(img, img, cv::Size(), scale, scale);
     // Show result
     cv::imshow("FAST Corners", img);
     cv::waitKey(0);

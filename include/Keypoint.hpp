@@ -1,4 +1,6 @@
 #pragma once
+#include <vector>
+#include <opencv2/opencv.hpp>
 namespace ORB
 {
     struct Keypoint
@@ -10,6 +12,7 @@ namespace ORB
         float score = 0.0f; // Score for corner strength
         float angle = 0.0f; // Angle for orientation 
         int level = 0; // Pyramid level
+        std::vector<uchar> descriptor; // Descriptor (256 bits = 32 bytes)
 
     public:
         Keypoint(int _x, int _y, float _I, float _score, float _angle, int _level) : x(_x), y(_y), I(_I), score(_score), angle(angle), level(_level) {}    
@@ -25,6 +28,7 @@ namespace ORB
         float getScore() const { return score; }
         float getAngle() const { return angle; }
         int getLevel() const { return level; }
+        const std::vector<uchar> &getDescriptor() const { return descriptor; }
 
         // Setters
         void setX(int value) { x = value; }
@@ -33,6 +37,7 @@ namespace ORB
         void setScore(float value) { score = value; }
         void setLevel(int l) { level = l; }
         void setAngle(float a) { angle = a; }
+        void setDescriptor(const std::vector<uchar> &desc) { descriptor = desc; }
 
         // Comparison operators
         bool operator<(const Keypoint &other) const
