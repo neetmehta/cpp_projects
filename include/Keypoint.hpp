@@ -6,16 +6,16 @@ namespace ORB
     struct Keypoint
     {
     private:
-        int x;           // Position
-        int y;           // Position
-        float I = 0.0f;  // Intensity
-        float score = 0.0f; // Score for corner strength
-        float angle = 0.0f; // Angle for orientation 
-        int level = 0; // Pyramid level
+        int x;                         // Position
+        int y;                         // Position
+        float I = 0.0f;                // Intensity
+        float score = 0.0f;            // Score for corner strength
+        float angle = 0.0f;            // Angle for orientation
+        int level = 0;                 // Pyramid level
         std::vector<uchar> descriptor; // Descriptor (256 bits = 32 bytes)
 
     public:
-        Keypoint(int _x, int _y, float _I, float _score, float _angle, int _level) : x(_x), y(_y), I(_I), score(_score), angle(angle), level(_level) {}    
+        Keypoint(int _x, int _y, float _I, float _score, float _angle, int _level) : x(_x), y(_y), I(_I), score(_score), angle(angle), level(_level) {}
         Keypoint(int _x, int _y, float _I, float _score, float _angle) : x(_x), y(_y), I(_I), score(_score), angle(angle) {}
         Keypoint(int _x, int _y, float _I, float _score) : x(_x), y(_y), I(_I), score(_score) {}
         Keypoint(int _x, int _y) : x(_x), y(_y) {}

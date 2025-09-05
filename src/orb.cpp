@@ -283,10 +283,10 @@ namespace ORB
 
     void computeBriefDescriptor(cv::Mat &image,
                                 std::vector<Keypoint> &keypoints,
-                                int nfeatures,     // usually 256
-                                int patchSize)     // ORB default = 31
+                                int nfeatures, // usually 256
+                                int patchSize) // ORB default = 31
     {
-        CV_Assert(patchSize == 31);  // current bit_pattern is for 31
+        CV_Assert(patchSize == 31); // current bit_pattern is for 31
         CV_Assert(nfeatures % 8 == 0);
 
         // Pre-blur the image (OpenCV does this at pyramid construction, not per kp)
@@ -338,8 +338,6 @@ namespace ORB
             kp.setDescriptor(descriptor);
         }
     }
-
-
 
     std::vector<Keypoint> nonMaxSuppression(const std::vector<Keypoint> &keypoints, int radius, int rows, int cols)
     {
