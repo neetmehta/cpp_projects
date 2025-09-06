@@ -31,47 +31,6 @@ namespace ORB
         Keypoint(3, 0), Keypoint(3, 1), Keypoint(2, 2), Keypoint(1, 3), Keypoint(0, 3), Keypoint(-1, 3), Keypoint(-2, 2), Keypoint(-3, 1),
         Keypoint(-3, 0), Keypoint(-3, -1), Keypoint(-2, -2), Keypoint(-1, -3), Keypoint(0, -3), Keypoint(1, -3), Keypoint(2, -2), Keypoint(3, -1)};
 
-    void getHarrisScore(const cv::Mat &image, std::vector<Keypoint> &keypoints, int blockSize, int ksize, double k)
-    {
-        // Profiler p("getHarrisScore");
-        cv::Mat Ix, Iy;
-        cv::Sobel(image, Ix, CV_32F, 0, 1, ksize);
-        cv::Sobel(image, Iy, CV_32F, 1, 0, ksize);
-        float scale = (1 << (ksize - 1)) * 255.0 * blockSize;
-        scale = 1.0f / scale;
-        scale = scale * scale * scale * scale;
-
-        for (auto &kp : keypoints)
-        {
-            int x0 = kp.getX();
-            int y0 = kp.getY();
-            int halfBlock = blockSize / 2;
-
-            float a = 0, b = 0, c = 0;
-
-            for (int i = -halfBlock; i <= halfBlock; ++i)
-            {
-                for (int j = -halfBlock; j <= halfBlock; ++j)
-                {
-                    int xi = x0 + i;
-                    int yj = y0 + j;
-
-                    float ix = Ix.at<float>(yj, xi);
-                    float iy = Iy.at<float>(yj, xi);
-
-                    a += ix * ix;
-                    b += iy * iy;
-                    c += ix * iy;
-                }
-            }
-            float det = a * b - c * c;
-            float trace = a + b;
-            float R = (det - k * trace * trace) * scale;
-
-            kp.setScore(R);
-        }
-    }
-
     float getICAngle(cv::Mat &image, ORB::Keypoint &kp, int radius, std::vector<int> umax)
     {
         int m_01 = 0, m_10 = 0;
@@ -100,7 +59,71 @@ namespace ORB
         return cv::fastAtan2((float)m_01, (float)m_10);
     }
 
-    bool fastTest(cv::Mat &img, Keypoint p, float threshold)
+    ORBDescriptor::ORBDescriptor(int _nkeypoints, int _nlevels, float _scaleFactor, int _edgeThreshold, int _fastThreshold, int _patchSize, int _nmsRadius, int _harrisBlockSize, int _nfeatures) : nkeypoints(_nkeypoints), nlevels(_nlevels), scaleFactor(_scaleFactor), edgeThreshold(_edgeThreshold), fastThreshold(_fastThreshold), patchSize(_patchSize), nmsRadius(_nmsRadius), harrisBlockSize(_harrisBlockSize), nfeatures(_nfeatures)
+
+    {
+        // Precompute the umax table
+        imagePyramid.resize(nlevels);
+        int halfPatchSize = patchSize / 2;
+        umax.resize(halfPatchSize + 1);
+
+        int v, v0, vmax = cvRound(halfPatchSize * std::sqrt(2.f) / 2 + 1);
+        int vmin = cvRound(halfPatchSize * std::sqrt(2.f) / 2);
+        for (v = 0; v <= vmax; ++v)
+            umax[v] = cvRound(std::sqrt((float)(halfPatchSize * halfPatchSize - v * v)));
+
+        // Make sure we are symmetric
+        for (v = halfPatchSize, v0 = 0; v >= vmin; --v)
+        {
+            while (umax[v0] == umax[v0 + 1])
+                ++v0;
+            umax[v] = v0;
+            ++v0;
+        }
+    }
+
+    void ORBDescriptor::getHarrisScore(const cv::Mat &image, std::vector<Keypoint> &keypoints, int ksize, double k)
+    {
+        // Profiler p("getHarrisScore");
+        cv::Mat Ix, Iy;
+        cv::Sobel(image, Ix, CV_32F, 0, 1, ksize);
+        cv::Sobel(image, Iy, CV_32F, 1, 0, ksize);
+        float scale = (1 << (ksize - 1)) * 255.0 * harrisBlockSize;
+        scale = 1.0f / scale;
+        scale = scale * scale * scale * scale;
+
+        for (auto &kp : keypoints)
+        {
+            int x0 = kp.getX();
+            int y0 = kp.getY();
+            int halfBlock = harrisBlockSize / 2;
+
+            float a = 0, b = 0, c = 0;
+
+            for (int i = -halfBlock; i <= halfBlock; ++i)
+            {
+                for (int j = -halfBlock; j <= halfBlock; ++j)
+                {
+                    int xi = x0 + i;
+                    int yj = y0 + j;
+
+                    float ix = Ix.at<float>(yj, xi);
+                    float iy = Iy.at<float>(yj, xi);
+
+                    a += ix * ix;
+                    b += iy * iy;
+                    c += ix * iy;
+                }
+            }
+            float det = a * b - c * c;
+            float trace = a + b;
+            float R = (det - k * trace * trace) * scale;
+
+            kp.setScore(R);
+        }
+    }
+
+    bool ORBDescriptor::fastTest(cv::Mat &img, Keypoint p)
     {
         int brighter = 0, darker = 0;
         uchar centerIntensity = static_cast<uchar>(p.getIntensity());
@@ -109,11 +132,11 @@ namespace ORB
         {
             Keypoint fp = offset + p;
             uchar val = img.at<uchar>(fp.getY(), fp.getX());
-            if (val > centerIntensity + threshold)
+            if (val > centerIntensity + fastThreshold)
             {
                 brighter++;
             }
-            else if (val < centerIntensity - threshold)
+            else if (val < centerIntensity - fastThreshold)
             {
                 darker++;
             }
@@ -121,8 +144,7 @@ namespace ORB
         return (brighter > 1) || (darker > 1);
     }
 
-    void buildImagePyramid(const cv::Mat &image, std::vector<cv::Mat> &imagePyramid,
-                           int nlevels, float scaleFactor)
+    void ORBDescriptor::buildImagePyramid(const cv::Mat &image, std::vector<cv::Mat> &imagePyramid)
     {
         // Profiler p("buildImagePyramid");
         imagePyramid.clear();
@@ -139,10 +161,11 @@ namespace ORB
         }
     }
 
-    void computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, float fastThreshold, int HarrisblockSize, int nfeatures, int halfPatchSize, std::vector<int> umax, int level)
+    void ORBDescriptor::computeFastKeypoints(cv::Mat &image, std::vector<Keypoint> &keypoints, int nlevelkeypoints, int level)
     {
         // Profiler p("computeFastKeypoints");
         std::vector<Keypoint> keypixels, keypixelsAfterNMS;
+        int halfPatchSize = patchSize / 2;
 
         int rows = image.rows;
         int cols = image.cols;
@@ -151,7 +174,7 @@ namespace ORB
         {
             for (int x = halfPatchSize; x < cols - halfPatchSize; ++x)
             {
-                if (!fastTest(image, Keypoint(x, y, image.at<uchar>(y, x), 0), fastThreshold))
+                if (!fastTest(image, Keypoint(x, y, image.at<uchar>(y, x), 0)))
                 {
                     continue;
                 }
@@ -196,31 +219,30 @@ namespace ORB
             }
         }
 
-        keypixelsAfterNMS = nonMaxSuppression(keypixels, 7, image.rows, image.cols);
+        keypixelsAfterNMS = nonMaxSuppression(keypixels, image.rows, image.cols);
 
-        getHarrisScore(image, keypixelsAfterNMS, HarrisblockSize, 3, 0.04);
+        getHarrisScore(image, keypixelsAfterNMS, 3, 0.04);
         // Sort keypoints by Harris score in descending order
 
         std::sort(keypixelsAfterNMS.begin(), keypixelsAfterNMS.end(), [](const Keypoint &a, const Keypoint &b)
                   { return a.getScore() > b.getScore(); });
 
-        for (size_t i = 0; i < keypixelsAfterNMS.size() && i < nfeatures; ++i)
+        for (size_t i = 0; i < keypixelsAfterNMS.size() && i < nlevelkeypoints; ++i)
         {
             keypoints.emplace_back(keypixelsAfterNMS[i]);
         }
     }
 
-    std::vector<Keypoint> computeKeypoints(cv::Mat &image, float fastThreshold, int blockSize, int edgeThreshold, int patchSize, int nfeatures, int nlevels, float scaleFactor)
+    std::vector<Keypoint> ORBDescriptor::computeKeypoints(cv::Mat &image)
     {
         // Profiler p("computeKeypoints");
         // Initialize variables
         std::vector<int> nfeaturesPerLevel(nlevels);
-        std::vector<cv::Mat> imagePyramid(nlevels);
         std::vector<Keypoint> allKeypoints;
 
         // Calculate the number of features per level
         float factor = (float)(1.0 / scaleFactor);
-        float ndesiredFeaturesPerScale = nfeatures * (1 - factor) / (1 - (float)pow((double)factor, (double)nlevels));
+        float ndesiredFeaturesPerScale = nkeypoints * (1 - factor) / (1 - (float)pow((double)factor, (double)nlevels));
 
         int sumFeatures = 0;
         for (int level = 0; level < nlevels - 1; level++)
@@ -229,9 +251,9 @@ namespace ORB
             sumFeatures += nfeaturesPerLevel[level];
             ndesiredFeaturesPerScale *= factor;
         }
-        nfeaturesPerLevel[nlevels - 1] = std::max(nfeatures - sumFeatures, 0);
+        nfeaturesPerLevel[nlevels - 1] = std::max(nkeypoints - sumFeatures, 0);
         // Build image pyramid
-        buildImagePyramid(image, imagePyramid, nlevels, scaleFactor);
+        buildImagePyramid(image, imagePyramid);
 
         int halfPatchSize = patchSize / 2;
         std::vector<int> umax(halfPatchSize + 2);
@@ -255,8 +277,8 @@ namespace ORB
         for (int level = 0; level < nlevels; ++level)
         {
             std::vector<Keypoint> keypoints;
-            computeFastKeypoints(imagePyramid[level], keypoints, fastThreshold, blockSize, nfeaturesPerLevel[level], halfPatchSize, umax, level);
-            computeBriefDescriptor(imagePyramid[level], keypoints, 256, patchSize);
+            computeFastKeypoints(imagePyramid[level], keypoints, nfeaturesPerLevel[level], level);
+            computeBriefDescriptor(imagePyramid[level], keypoints);
             for (auto &kp : keypoints)
             {
                 // Scale keypoint coordinates to original image size
@@ -271,9 +293,9 @@ namespace ORB
         std::sort(allKeypoints.begin(), allKeypoints.end(), [](const Keypoint &a, const Keypoint &b)
                   { return a.getScore() > b.getScore(); });
 
-        if (allKeypoints.size() > static_cast<size_t>(nfeatures))
+        if (allKeypoints.size() > static_cast<size_t>(nkeypoints))
         {
-            allKeypoints.resize(nfeatures);
+            allKeypoints.resize(nkeypoints);
         }
 
         return allKeypoints;
@@ -281,10 +303,8 @@ namespace ORB
 
     // extern const int bit_pattern_31_[256][4];
 
-    void computeBriefDescriptor(cv::Mat &image,
-                                std::vector<Keypoint> &keypoints,
-                                int nfeatures, // usually 256
-                                int patchSize) // ORB default = 31
+    void ORBDescriptor::computeBriefDescriptor(cv::Mat &image,
+                                               std::vector<Keypoint> &keypoints)
     {
         CV_Assert(patchSize == 31); // current bit_pattern is for 31
         CV_Assert(nfeatures % 8 == 0);
@@ -339,10 +359,10 @@ namespace ORB
         }
     }
 
-    std::vector<Keypoint> nonMaxSuppression(const std::vector<Keypoint> &keypoints, int radius, int rows, int cols)
+    std::vector<Keypoint> ORBDescriptor::nonMaxSuppression(const std::vector<Keypoint> &keypoints, int rows, int cols)
     {
         // Profiler p("nonMaxSuppression");
-        int cellSize = radius;
+        int cellSize = nmsRadius;
         int gridRows = (rows + cellSize - 1) / cellSize;
         int gridCols = (cols + cellSize - 1) / cellSize;
 

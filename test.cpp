@@ -22,7 +22,7 @@ int main()
     // -------------------------------
     // 1. Your ORB Keypoints
     // -------------------------------
-    auto keypoints_custom = ORB::computeKeypoints(img_gs, 20.0f, 7, 31, 31, 500, 8, 1.2);
+    auto keypoints_custom = ORB::ORBDescriptor(500, 8, 1.2, 31, 20, 31).computeKeypoints(img_gs);
 
     for (const auto &pt : keypoints_custom)
     {
